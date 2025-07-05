@@ -1,10 +1,6 @@
 const WebSocket = require('ws');
-const express = require('express');
-const bodyParser = require('body-parser');
-const cors = require('cors');
 
 const WS_PORT = 8765;
-const HTTP_PORT = 8766;
 
 class WebSocketServer {
   constructor() {
@@ -27,6 +23,18 @@ class WebSocketServer {
     console.log('WebSocket server is running');
   }
 
+  async waitForConnection() {
+    if (this.connectedSocket) return;
+    console.log('Waiting for browser to connect...');
+    await new Promise((resolve) => {
+      const check = () => {
+        if (this.connectedSocket) resolve();
+        else setTimeout(check, 100);
+      };
+      check();
+    });
+  }
+
   async sendRequest(request, callback) {
     if (!this.connectedSocket) {
       callback('stop', 'api error');
@@ -34,6 +42,7 @@ class WebSocketServer {
       return;
     }
 
+    console.log('Sending message request:', request.text);
     this.connectedSocket.send(JSON.stringify(request));
 
     let text = ''
@@ -44,9 +53,10 @@ class WebSocketServer {
 
       if (jsonObject.type === 'stop') {
         this.connectedSocket.off('message', handleMessage);
+        console.log('Message output (final):', text);
         callback('stop', text);
       } else if (jsonObject.type === 'answer')  {
-        console.log('answer:', jsonObject.text)
+        console.log('Message output (partial):', jsonObject.text);
         text = jsonObject.text
         callback('answer', text);
       }
@@ -57,81 +67,37 @@ class WebSocketServer {
 
 const webSocketServer = new WebSocketServer();
 
-const app = express();
+const requestPayload = {
+  text: 'What is the capital of France?',
+  model: 'gpt-4o',
+  newChat: true,
+};
 
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(cors());
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-app.post('/v1/chat/completions', async function (req, res) {
-
-  const { messages, model, stream, newChat = true  } = req.body;
-
-  if(stream){
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders();
-  }
-
-  console.log('request body', req.body)
-
-  const requestPayload = `
-    Now you must play the role of system and answer the user.
-
-    ${JSON.stringify(messages)}
-
-    Your answer:
-  `;
-
-  let lastResponse = '';
+(async () => {
+  await webSocketServer.waitForConnection();
+  console.log('Sending request...');
   webSocketServer.sendRequest(
-    {
-      text: requestPayload,
-      model: model,
-      newChat,
-    },
+    requestPayload,
     (type, response) => {
       try {
         response = response.trim()
         let deltaContent = '';
-        if (lastResponse) {
-          const index = response.indexOf(lastResponse);
-          deltaContent = index >= 0 ? response.slice(index + lastResponse.length) : response;
-        } else {
-          deltaContent = response;
-        }
         const result = {
           choices: [{
               message: { content: response },
               delta: { content: deltaContent }
           }]
         }
-        lastResponse = response
         if(type === 'stop'){
-          if(stream) {
-            res.write(`id: ${Date.now()}\n`);
-            res.write(`event: event\n`);
-            res.write('data: [DONE]\n\n');
-            res.end();
-          } else {
-            res.send(result);
-          }
-        } else {
-          if(stream) {
-            res.write(`id: ${Date.now()}\n`);
-            res.write(`event: event\n`);
-            res.write(`data: ${JSON.stringify(result)}\n\n`);
-          }
+          console.log('result', result)
         }
-        console.log('result', result)
       } catch (error) {
         console.log('error', error)
       }
     }
   );
-});
-
-app.listen(HTTP_PORT, function () {
-  console.log(`Application example, access address is http://localhost:${HTTP_PORT}/v1/chat/completions`);
-});
+})();
