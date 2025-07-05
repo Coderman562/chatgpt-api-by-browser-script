@@ -1,258 +1,133 @@
 // ==UserScript==
-// @name         ChatGPT API By Browser Script
+// @name         ChatGPT API By Browser Script (no‑dedupe)
 // @namespace    http://tampermonkey.net/
-// @version      1
+// @version      2.5
+// @description  Drive ChatGPT from your own websocket server – sends every answer, even identical ones
 // @match        https://chatgpt.com/*
-// @icon         https://www.google.com/s2/favicons?sz=64&domain=openai.com
-// @grant        GM_webRequest
-// @license MIT
+// @grant        none
+// @license      MIT
 // ==/UserScript==
 
-const log = (...args) => {
-  console.log('chatgpt-api-by-browser-script', ...args);
-}
-log('starting');
-
-const WS_URL = `ws://localhost:8765`;
-
-function cleanText(inputText) {
-  const invisibleCharsRegex =
-    /[\u200B\u200C\u200D\uFEFF]|[\u0000-\u001F\u007F-\u009F]/g;
-  const cleanedText = inputText.replace(invisibleCharsRegex, '');
-  return cleanedText;
-}
-function getTextFromNode(node) {
-
-  let result = '';
-
-  if (!node) return result;
-
-  if (
-    node.classList.contains('text-token-text-secondary') &&
-    node.classList.contains('bg-token-main-surface-secondary')
-  ) {
-    return result;
-  }
-
-  const childNodes = node.childNodes;
-
-  for (let i = 0; i < childNodes.length; i++) {
-    let childNode = childNodes[i];
-    if (childNode.nodeType === Node.TEXT_NODE) {
-      result += childNode.textContent;
-    } else if (childNode.nodeType === Node.ELEMENT_NODE) {
-      let tag = childNode.tagName.toLowerCase();
-      if (tag === 'code') {
-        result += getTextFromNode(childNode);
-      } else {
-        result += getTextFromNode(childNode);
-      }
-    }
-  }
-
-  return cleanText(result);
-}
-
-function sleep(time) {
-  return new Promise((resolve) => setTimeout(resolve, time));
-}
-
-// Main app class
-class App {
-  constructor() {
-    this.socket = null;
-    this.observer = null;
-    this.stop = false;
-    this.dom = null;
-    this.lastText = null; // Track the last message text
-  }
-
-  async start({ text, model, newChat }) {
-    this.stop = false;
-    log('Starting to edit or send a message');
-
-    // Check for the edit button
-    const editButton = document.querySelector(
-      'button.flex.h-9.w-9.items-center.justify-center.rounded-full.text-token-text-secondary.transition.hover\\:bg-token-main-surface-tertiary'
-    );
-    if (editButton) {
-      log('Edit button found, clicking it');
-      editButton.click();
-      await sleep(500);
-
-      // Select all text and replace with the new text
-      const textarea = document.querySelector('textarea');
-      if (textarea) {
-        log('Textarea found, replacing text');
-        textarea.value = text;
-        textarea.select();
-        const event = new Event('input', { bubbles: true });
-        textarea.dispatchEvent(event);
-
-        // Adding a small delay before pressing the send button
-        await sleep(500);
-
-        // Click the send button to send the edited message
-        const sendButton = document.querySelector(
-          'button.btn.relative.btn-primary'
-        );
-        if (sendButton) {
-          log('Send button found, clicking it');
-          sendButton.click();
-        } else {
-          log('Error: Send button not found');
-        }
-      } else {
-        log('Error: Textarea not found');
-      }
-    } else {
-      log('No edit button found, sending a new message');
-      const textarea = document.querySelector('textarea');
-      if (textarea) {
-        textarea.value = text;
-        const event = new Event('input', { bubbles: true });
-        textarea.dispatchEvent(event);
-        await sleep(500);
-        const sendButton = document.querySelector(
-          'button.mb-1.mr-1.flex.h-8.w-8.items-center.justify-center.rounded-full.bg-black.text-white.transition-colors.hover\\:opacity-70.focus-visible\\:outline-none.focus-visible\\:outline-black.disabled\\:bg-\\[\\#D7D7D7\\].disabled\\:text-\\[\\#f4f4f4\\].disabled\\:hover\\:opacity-100.dark\\:bg-white.dark\\:text-black.dark\\:focus-visible\\:outline-white.disabled\\:dark\\:bg-token-text-quaternary.dark\\:disabled\\:text-token-main-surface-secondary'
-        );
-        if (sendButton) {
-          log('Send button found, clicking it');
-          sendButton.click();
-        } else {
-          log('Error: Send button not found');
-        }
-      } else {
-        log('Error: Textarea not found');
-      }
-    }
-
-    this.observeMutations();
-  }
-
-  async observeMutations() {
-    let isStart = false;
-    this.observer = new MutationObserver(async (mutations) => {
-      let stopButton = document.querySelector('button.bg-black .icon-lg');
-      if (stopButton) {
-        isStart = true;
-      }
-
-      if (!isStart) {
-        log('Not start, there is no stop button');
-        return;
-      }
-
-      const list = [...document.querySelectorAll('div.agent-turn')];
-      const last = list[list.length - 1];
-      if (!last && stopButton) {
-        log('Error: No last message found');
-        return;
-      }
-
-      let lastText = getTextFromNode(
-        last.querySelector('div[data-message-author-role="assistant"]')
-      );
-
-      if ((!lastText || lastText === this.lastText) && stopButton) {
-        log('Error: Last message text not found or unchanged');
-        return;
-      }
-
-      this.lastText = lastText;
-      log('send', {
-        text: lastText,
-      });
-      this.socket.send(
-        JSON.stringify({
-          type: 'answer',
-          text: lastText,
-        })
-      );
-
-      if (!stopButton) {
-        this.observer.disconnect();
-
-        if (this.stop) return;
-        this.stop = true;
-        log('send', {
-          type: 'stop',
-        });
-        this.socket.send(
-          JSON.stringify({
-            type: 'stop',
-          })
-        );
-
-      }
-    });
-
-    const observerConfig = {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    };
-    this.observer.observe(document.body, observerConfig);
-  }
-
-  sendHeartbeat() {
-    if (this.socket.readyState === WebSocket.OPEN) {
-      log('Sending heartbeat');
-      this.socket.send(JSON.stringify({ type: 'heartbeat' }));
-    }
-  }
-
-  connect() {
-    this.socket = new WebSocket(WS_URL);
-    this.socket.onopen = () => {
-      log('Server connected, can process requests now.');
-      this.dom.innerHTML = '<div style="color: green;">API Connected!</div>';
-    };
-    this.socket.onclose = () => {
-      log(
-        'Error: The server connection has been disconnected, the request cannot be processed.'
-      );
-      this.dom.innerHTML = '<div style="color: red;">API Disconnected!</div>';
-
-      setTimeout(() => {
-        log('Attempting to reconnect...');
-        this.connect();
-      }, 2000);
-    };
-    this.socket.onerror = (error) => {
-      log(
-        'Error: Server connection error, please check the server.',
-        error
-      );
-      this.dom.innerHTML = '<div style="color: red;">API Error!</div>';
-    };
-    this.socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        log('Received data from server', data);
-        this.start(data);
-      } catch (error) {
-        log('Error: Failed to parse server message', error);
-      }
-    };
-  }
-
-  init() {
-    window.addEventListener('load', () => {
-      this.dom = document.createElement('div');
-      this.dom.style =
-        'position: fixed; top: 10px; right: 10px; z-index: 9999; display: flex; justify-content: center; align-items: center;';
-      document.body.appendChild(this.dom);
-
-      this.connect();
-
-      setInterval(() => this.sendHeartbeat(), 30000);
-    });
-  }
-}
-
-(function () {
+(() => {
   'use strict';
-  const app = new App();
-  app.init();
+
+  /* ---------------- configuration ---------------- */
+  const WS_URL         = 'ws://localhost:8765';
+  const FINAL_DELAY_MS = 3000;          // post‑stream safety wait
+  const STOP_BTN_SEL   = [
+      'button[data-testid="stop-button"]',
+      'button[aria-label="Stop streaming"]',
+      'button[aria-label="Stop generating"]'
+  ].join(',');
+
+  const log   = (...a) => console.log('chatgpt‑api‑by‑browser‑script', ...a);
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  /* ---------------- main app --------------------- */
+  class App {
+      socket     = null;
+      statusNode = null;
+      observer   = null;
+
+      init() {
+          window.addEventListener('load', () => {
+              this._injectStatus();
+              this._connect();
+              setInterval(() => this._heartbeat(), 30_000);
+          });
+      }
+
+      /* ---------- websocket plumbing ---------- */
+      _connect() {
+          this.socket = new WebSocket(WS_URL);
+
+          this.socket.onopen   = () => this._setStatus('API Connected',    '#16a34a');
+          this.socket.onclose  = () => { this._setStatus('API Disconnected','#ef4444');
+                                         setTimeout(() => this._connect(), 2000); };
+          this.socket.onerror  = () =>  this._setStatus('API Error',       '#ef4444');
+
+          this.socket.onmessage = e => {
+              try {
+                  const req = JSON.parse(e.data);
+                  if (req?.text) this._sendPrompt(req.text);
+              } catch (err) { log('parse error', err); }
+          };
+      }
+
+      _heartbeat() {
+          if (this.socket?.readyState === WebSocket.OPEN) {
+              this.socket.send(JSON.stringify({ type:'heartbeat' }));
+          }
+      }
+
+      /* ------------- prompt handling ------------- */
+      async _sendPrompt(text) {
+          const editor = document.querySelector('div.ProseMirror[contenteditable="true"]');
+          if (!editor) { log('editor not found'); return; }
+
+          editor.focus();
+          editor.innerHTML = text.replace(/\n/g,'<br>');
+          editor.dispatchEvent(new Event('input', { bubbles:true }));
+          await sleep(100);
+
+          ['keydown','keyup'].forEach(t =>
+              editor.dispatchEvent(new KeyboardEvent(t,{ key:'Enter', code:'Enter', bubbles:true }))
+          );
+
+          this._watchForAnswer();
+      }
+
+      /* ------------- answer collection ------------ */
+      _watchForAnswer() {
+          let started = false;
+          this.observer?.disconnect();
+
+          this.observer = new MutationObserver(() => {
+              const stopBtn = document.querySelector(STOP_BTN_SEL);
+              if (stopBtn) started = true;
+
+              if (started && !stopBtn) {
+                  this.observer.disconnect();
+                  setTimeout(() => this._sendFinalAnswer(), FINAL_DELAY_MS);
+              }
+          });
+
+          this.observer.observe(document.body, { childList:true, subtree:true });
+      }
+
+      _sendFinalAnswer() {
+          // last conversation turn in the thread
+          const lastArticle = document.querySelector(
+              'article[data-testid^="conversation-turn-"]:last-of-type'
+          );
+          if (!lastArticle) { log('article not found'); return; }
+
+          const md = lastArticle.querySelector(
+              'div[data-message-author-role="assistant"] .markdown'
+          );
+          if (!md) { log('markdown not found'); return; }
+
+          const text = md.innerText.trim();
+          this.socket.send(JSON.stringify({ type: 'answer', text }));
+          this.socket.send(JSON.stringify({ type: 'stop'   }));
+      }
+
+
+      /* ------------- UI helpers ------------------- */
+      _injectStatus() {
+          this.statusNode = Object.assign(document.createElement('div'), {
+              style: 'position:fixed;top:10px;right:10px;z-index:9999;font-weight:600'
+          });
+          document.body.appendChild(this.statusNode);
+      }
+
+      _setStatus(t,c){
+          if (this.statusNode) {
+              this.statusNode.textContent = t;
+              this.statusNode.style.color = c;
+          }
+      }
+  }
+
+  new App().init();
 })();
