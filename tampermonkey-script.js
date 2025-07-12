@@ -20,7 +20,36 @@
       'button[aria-label="Stop generating"]'
   ].join(',');
 
-  const MODELS = ['gpt-4o', 'o4-mini', 'o4-mini-high', 'gpt-4-1'];
+  const MODELS = [
+      'gpt-4o',
+      'o3',
+      'o4-mini',
+      'o4-mini-high',
+      'gpt-4-5',
+      'gpt-4-1',
+      'gpt-4-1-mini'
+  ];
+
+  const AVAILABLE_CHECK_INTERVAL_MS = 10000;
+
+  const MODEL_UI_TO_PARAM = {
+      'gpt-4o': 'gpt-4o',
+      'o3': 'o3',
+      'o4-mini': 'o4-mini',
+      'o4-mini-high': 'o4-mini-high',
+      'gpt-4.5': 'gpt-4-5',
+      'gpt-4-5': 'gpt-4-5',
+      'gpt-4.1': 'gpt-4-1',
+      'gpt-4-1': 'gpt-4-1',
+      'gpt-4.1-mini': 'gpt-4-1-mini',
+      'gpt-4-1-mini': 'gpt-4-1-mini'
+  };
+
+  const normalizeModel = m => {
+      if (!m) return '';
+      m = m.toLowerCase().replace(/\s+/g, '');
+      return MODEL_UI_TO_PARAM[m] || m.replace(/\./g, '-');
+  };
 
   const log   = (...a) => console.log('chatgpt‑api‑by‑browser‑script', ...a);
   const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -31,6 +60,50 @@
       statusNode = null;
       observer   = null;
       modelIndex = 0;
+
+      async _getAvailableModels() {
+          const picker = document.querySelector('[data-testid="model-picker"]')
+                       || document.querySelector('[data-testid="model-switcher-dropdown-button"]')
+                       || document.querySelector('[data-testid="model-switcher"]');
+          if (!picker) return MODELS.slice();
+
+          picker.click();
+          await sleep(50);
+
+          const collect = () => Array.from(
+              document.querySelectorAll('[role="option"], [role="menuitem"]')
+          );
+
+          let options = collect();
+          const submenu = document.querySelector('[data-testid="more-models-submenu"]');
+          if (submenu) {
+              submenu.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+              await sleep(50);
+              options = collect();
+          }
+
+          picker.click();
+
+          const models = options
+              .filter(el => el.getAttribute('aria-disabled') !== 'true' && !el.hasAttribute('data-disabled'))
+              .filter(el => !el.dataset?.testid?.includes('more-models-submenu'))
+              .map(el => normalizeModel(el.textContent.trim()))
+              .filter(Boolean);
+          return Array.from(new Set(models));
+      }
+
+      async _isModelAvailable(model) {
+          const list = await this._getAvailableModels();
+          return list.includes(model);
+      }
+
+      async _findNextAvailableIndex() {
+          for (let i = 1; i <= MODELS.length; i++) {
+              const idx = (this.modelIndex + i) % MODELS.length;
+              if (await this._isModelAvailable(MODELS[idx])) return idx;
+          }
+          return null;
+      }
 
       init() {
           window.addEventListener('load', () => {
@@ -124,10 +197,12 @@
 
       _getCurrentModel() {
           const urlModel = new URLSearchParams(location.search).get('model');
+          if (urlModel) return normalizeModel(urlModel);
+
           const btn = document.querySelector('[data-testid="model-picker"] span')
                     || document.querySelector('[data-testid="model-switcher"] span');
-          const uiModel = btn ? btn.textContent.trim().toLowerCase() : null;
-          return uiModel || urlModel || '';
+          const uiModel = btn ? btn.textContent.trim() : '';
+          return normalizeModel(uiModel);
       }
 
       _ensureModel(model) {
@@ -139,8 +214,17 @@
       }
 
       _switchModel() {
-          this.modelIndex = (this.modelIndex + 1) % MODELS.length;
-          this._ensureModel(MODELS[this.modelIndex]);
+          const attemptSwitch = async () => {
+              const nextIdx = await this._findNextAvailableIndex();
+              if (nextIdx !== null) {
+                  this.modelIndex = nextIdx;
+                  this._ensureModel(MODELS[this.modelIndex]);
+              } else {
+                  log('No models available, waiting...');
+                  setTimeout(attemptSwitch, AVAILABLE_CHECK_INTERVAL_MS);
+              }
+          };
+          attemptSwitch();
       }
 
 
