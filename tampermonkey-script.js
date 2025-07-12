@@ -20,6 +20,8 @@
       'button[aria-label="Stop generating"]'
   ].join(',');
 
+  const MODELS = ['gpt-4o', 'o4-mini', 'o4-mini-high', 'gpt-4-1'];
+
   const log   = (...a) => console.log('chatgpt‑api‑by‑browser‑script', ...a);
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -28,11 +30,13 @@
       socket     = null;
       statusNode = null;
       observer   = null;
+      modelIndex = 0;
 
       init() {
           window.addEventListener('load', () => {
               this._injectStatus();
               this._connect();
+              this._ensureModel(MODELS[this.modelIndex]);
               setInterval(() => this._heartbeat(), 30_000);
           });
       }
@@ -64,6 +68,8 @@
       async _sendPrompt(text) {
           const editor = document.querySelector('div.ProseMirror[contenteditable="true"]');
           if (!editor) { log('editor not found'); return; }
+
+          this._ensureModel(MODELS[this.modelIndex]);
 
           editor.focus();
           editor.innerHTML = text.replace(/\n/g,'<br>');
@@ -108,8 +114,33 @@
           if (!md) { log('markdown not found'); return; }
 
           const text = md.innerText.trim();
-          this.socket.send(JSON.stringify({ type: 'answer', text }));
+          const the_model = this._getCurrentModel();
+          this.socket.send(JSON.stringify({ type: 'answer', text, the_model }));
+          if (the_model !== MODELS[this.modelIndex]) {
+              this._switchModel();
+          }
           this.socket.send(JSON.stringify({ type: 'stop'   }));
+      }
+
+      _getCurrentModel() {
+          const urlModel = new URLSearchParams(location.search).get('model');
+          const btn = document.querySelector('[data-testid="model-picker"] span')
+                    || document.querySelector('[data-testid="model-switcher"] span');
+          const uiModel = btn ? btn.textContent.trim().toLowerCase() : null;
+          return uiModel || urlModel || '';
+      }
+
+      _ensureModel(model) {
+          const url = new URL(location.href);
+          if (url.searchParams.get('model') !== model) {
+              url.searchParams.set('model', model);
+              location.href = url.toString();
+          }
+      }
+
+      _switchModel() {
+          this.modelIndex = (this.modelIndex + 1) % MODELS.length;
+          this._ensureModel(MODELS[this.modelIndex]);
       }
 
 

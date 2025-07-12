@@ -7,7 +7,7 @@ export interface RequestPayload {
 }
 
 export type ResponseType = 'stop' | 'answer' | 'error';
-export type ResponseCallback = (type: ResponseType, chunk: string) => void;
+export type ResponseCallback = (type: ResponseType, chunk: string, model?: string) => void;
 
 const WS_PORT = 8765;
 
@@ -62,15 +62,17 @@ class WebSocketServer {
     this.connectedSocket.send(JSON.stringify(request));
 
     let text = '';
+    let model = '';
     const handleMessage = (data: WebSocket.RawData) => {
       const jsonObject = JSON.parse(data.toString('utf8'));
 
       if (jsonObject.type === 'stop') {
         this.connectedSocket!.off('message', handleMessage);
-        callback('stop', text);
+        callback('stop', text, model);
       } else if (jsonObject.type === 'answer') {
         text = jsonObject.text;
-        callback('answer', text);
+        model = jsonObject.the_model || model;
+        callback('answer', text, model);
       }
     };
     this.connectedSocket.on('message', handleMessage);

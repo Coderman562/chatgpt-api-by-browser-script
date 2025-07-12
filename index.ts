@@ -1,6 +1,6 @@
 import fs from 'fs';
 import { sleep } from './utils/sleep';
-import { askChatGPT } from './services/chatGPTclient';
+import { askChatGPT, type ChatGPTResponse } from './services/chatGPTclient';
 import { webSocketServer } from './server/webSocketServer';
 
 const questions: string[] = JSON.parse(
@@ -19,14 +19,15 @@ const questions: string[] = JSON.parse(
     count += 1;
     console.log(`\n[${count}/${questions.length}]`);
 
-    const raw = await askChatGPT(q);
+    const resp: ChatGPTResponse = await askChatGPT(q);
+    const raw = resp.text;
 
     // grab the first JSON-array found (fallback: whole reply)
     const match = raw.match(/\[[\s\S]*?\]/);
     const extracted = match ? match[0] : raw.trim();
 
-    console.log('  ↳', extracted);
-    fs.appendFileSync('answers.txt', extracted + '\n');
+    console.log('  ↳', extracted, `(model: ${resp.the_model})`);
+    fs.appendFileSync('answers.txt', extracted + `\t${resp.the_model}\n`);
 
     if (count < questions.length) {
       const delay = 8_000 + Math.random() * 7_000; // 8–15 s
@@ -35,5 +36,5 @@ const questions: string[] = JSON.parse(
     }
   }
 
-  console.log('\nBatch complete – answers saved to answers.txt');
+console.log('\nBatch complete – answers saved to answers.txt');
 })();
