@@ -1,6 +1,7 @@
 import fs from 'fs';
 import { sleep } from './utils/sleep';
-import { askChatGPT, type ChatGPTResponse } from './services/chatGPTclient';
+import { type ChatGPTResponse } from './services/chatGPTclient';
+import { askWithReconnect } from './services/askWithReconnect';
 import { webSocketServer } from './server/webSocketServer';
 
 const questions: string[] = JSON.parse(
@@ -19,7 +20,7 @@ const questions: string[] = JSON.parse(
     count += 1;
     console.log(`\n[${count}/${questions.length}]`);
 
-    const resp: ChatGPTResponse = await askChatGPT(q);
+    const resp: ChatGPTResponse = await askWithReconnect(q);
     const raw = resp.text;
 
     // grab the first JSON-array found (fallback: whole reply)
