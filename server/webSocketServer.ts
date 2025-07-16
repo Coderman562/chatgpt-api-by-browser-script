@@ -1,3 +1,4 @@
+import EventEmitter from 'events';
 import WebSocket, { WebSocketServer as WsServer } from 'ws';
 
 export interface RequestPayload {
@@ -11,11 +12,12 @@ export type ResponseCallback = (type: ResponseType, chunk: string, model?: strin
 
 const WS_PORT = 8765;
 
-class WebSocketServer {
+class WebSocketServer extends EventEmitter {
   private server: WsServer;
-  private connectedSocket: WsServer | null = null;
+  private connectedSocket: WebSocket | null = null;
 
   constructor() {
+    super();
     this.server = new WsServer({ port: WS_PORT });
     this.initialize();
   }
@@ -25,16 +27,22 @@ class WebSocketServer {
       // @ts-ignore
       this.connectedSocket = socket;
       console.log('Browser connected, can process requests now.');
+      this.emit('connect');
 
       socket.on('close', () => {
         console.log(
           'The browser connection has been disconnected, the request cannot be processed.'
         );
         this.connectedSocket = null;
+        this.emit('disconnect');
       });
     });
 
     console.log('WebSocket server is running');
+  }
+
+  isConnected(): boolean {
+    return this.connectedSocket !== null;
   }
 
   async waitForConnection(): Promise<void> {
@@ -51,15 +59,15 @@ class WebSocketServer {
 
   sendRequest(request: RequestPayload, callback: ResponseCallback): void {
     if (!this.connectedSocket) {
-      callback('stop', 'api error');
+      callback('error', 'not connected');
       console.log(
         'The browser connection has not been established, the request cannot be processed.'
       );
       return;
     }
 
-    // @ts-ignore
-    this.connectedSocket.send(JSON.stringify(request));
+    const socket = this.connectedSocket as WebSocket;
+    socket.send(JSON.stringify(request));
 
     let text = '';
     let model = '';
@@ -67,7 +75,8 @@ class WebSocketServer {
       const jsonObject = JSON.parse(data.toString('utf8'));
 
       if (jsonObject.type === 'stop') {
-        this.connectedSocket!.off('message', handleMessage);
+        socket.off('message', handleMessage);
+        socket.off('close', handleClose);
         callback('stop', text, model);
       } else if (jsonObject.type === 'answer') {
         text = jsonObject.text;
@@ -75,7 +84,14 @@ class WebSocketServer {
         callback('answer', text, model);
       }
     };
-    this.connectedSocket.on('message', handleMessage);
+    const handleClose = () => {
+      socket.off('message', handleMessage);
+      socket.off('close', handleClose);
+      callback('error', 'disconnected');
+    };
+
+    socket.on('message', handleMessage);
+    socket.once('close', handleClose);
   }
 }
 
