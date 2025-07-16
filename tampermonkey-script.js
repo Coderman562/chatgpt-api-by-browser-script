@@ -31,6 +31,7 @@
   ];
 
   const AVAILABLE_CHECK_INTERVAL_MS = 10000;
+  const SWITCH_KEY = 'cabbage-desired-model';
 
   const MODEL_UI_TO_PARAM = {
       'gpt-4o': 'gpt-4o',
@@ -105,9 +106,24 @@
           return null;
       }
 
+      async _checkRedirect() {
+          const desired = sessionStorage.getItem(SWITCH_KEY);
+          if (!desired) return;
+          await sleep(500);
+          const current = this._getCurrentModel();
+          sessionStorage.removeItem(SWITCH_KEY);
+          if (current !== desired) {
+              log(`Model ${desired} not available after redirect`);
+              const idx = MODELS.indexOf(desired);
+              if (idx !== -1) this.modelIndex = idx;
+              this._switchModel();
+          }
+      }
+
       init() {
-          window.addEventListener('load', () => {
+          window.addEventListener('load', async () => {
               this._injectStatus();
+              await this._checkRedirect();
               this._connect();
               this._ensureModel(MODELS[this.modelIndex]);
               setInterval(() => this._heartbeat(), 30_000);
@@ -208,6 +224,7 @@
       _ensureModel(model) {
           const url = new URL(location.href);
           if (url.searchParams.get('model') !== model) {
+              sessionStorage.setItem(SWITCH_KEY, model);
               url.searchParams.set('model', model);
               location.href = url.toString();
           }
