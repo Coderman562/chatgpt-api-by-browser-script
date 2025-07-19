@@ -111,8 +111,9 @@
           if (!desired) return;
           await sleep(500);
           const current = this._getCurrentModel();
+          const available = await this._isModelAvailable(desired);
           sessionStorage.removeItem(SWITCH_KEY);
-          if (current !== desired) {
+          if (current !== desired || !available) {
               log(`Model ${desired} not available after redirect`);
               const idx = MODELS.indexOf(desired);
               if (idx !== -1) this.modelIndex = idx;
@@ -125,7 +126,11 @@
               this._injectStatus();
               await this._checkRedirect();
               this._connect();
-              this._ensureModel(MODELS[this.modelIndex]);
+              if (await this._isModelAvailable(MODELS[this.modelIndex])) {
+                  this._ensureModel(MODELS[this.modelIndex]);
+              } else {
+                  this._switchModel();
+              }
               setInterval(() => this._heartbeat(), 30_000);
           });
       }
@@ -156,7 +161,13 @@
       /* ------------- prompt handling ------------- */
       async _sendPrompt(text, newChat) {
           if (newChat) {
-              this._newChat();
+              await this._newChat();
+              return;
+          }
+
+          if (!(await this._isModelAvailable(MODELS[this.modelIndex]))) {
+              log(`Model ${MODELS[this.modelIndex]} unavailable at send`);
+              this._switchModel();
               return;
           }
 
@@ -236,8 +247,13 @@
           }
       }
 
-      _newChat() {
+      async _newChat() {
           const model = this._getCurrentModel();
+          if (!(await this._isModelAvailable(model))) {
+              log(`Model ${model} unavailable for new chat`);
+              this._switchModel();
+              return;
+          }
           const url = new URL('/', location.origin);
           url.searchParams.set('model', model);
           location.href = url.toString();
