@@ -182,16 +182,23 @@
 
     // Determine which model is currently selected
     _getCurrentModel() {
-      const urlModel = new URLSearchParams(location.search).get('model');
-      if (urlModel) return this._norm(urlModel);
-      const btn = document.querySelector('[data-testid="model-picker"] span') ||
-                  document.querySelector('[data-testid="model-switcher"] span');
-      return btn ? this._norm(btn.textContent.trim()) : '';
+      // The current model is displayed in a dedicated button element. While the URL
+      // previously exposed the selected model via a `model` query parameter, the UI
+      // now only reflects it through this button.  We read the label from the
+      // button and normalize it so that formats like "GPT 4o" become "gpt-4o".
+      const btn = document.querySelector('button[data-testid="model-switcher-dropdown-button"]');
+      if (!btn) return '';
+
+      const label = btn.getAttribute('aria-label') || btn.textContent;
+      if (!label) return '';
+      const match = label.match(/current model is\s*(.+)$/i);
+      const rawModel = match ? match[1] : label;
+      return this._norm(rawModel.trim());
     }
 
     // Normalize a model string to the API's expected format
     _norm(m) {
-      return m.toLowerCase().replace(/\s+/g, '').replace(/\./g, '-');
+      return m.toLowerCase().replace(/[\s\.]+/g, '-');
     }
 
     /* -------------- status UI -------------- */
