@@ -186,11 +186,13 @@
 
     // Determine which model is currently selected
     _getCurrentModel() {
-      // The active model is shown inside the model selector button, e.g.
-      //   <button data-testid="model-switcher-dropdown-button" aria-label="Model selector, current model is 4o">...
-      // The URL no longer carries the model name, so inspecting this button
-      // is the only reliable way to know which model ChatGPT is using. The
-      // label is normalized so "GPT 4o" becomes "gpt-4o".
+      // The active model is displayed inside the selector button, e.g.:
+      //   <button data-testid="model-switcher-dropdown-button" aria-label="Model selector, current model is 4o">ChatGPT <span>4o</span></button>
+      // when the dropdown shows "ChatGPT o4-mini" or "ChatGPT 4.1". Because the
+      // URL no longer includes the model name, reading this button is the only
+      // reliable way to detect which model is active.
+      // We normalize the label so variants like "ChatGPT 4.5" and "ChatGPT o4-mini-high"
+      // map to the API style names such as "gpt-4-5" or "o4-mini-high".
       const btn = document.querySelector('button[data-testid="model-switcher-dropdown-button"]');
       if (!btn) return '';
 
@@ -203,7 +205,15 @@
 
     // Normalize a model string to the API's expected format
     _norm(m) {
-      return m.toLowerCase().replace(/[\s\.]+/g, '-');
+      // Button labels look like "ChatGPT o4-mini-high" or "ChatGPT 4.1".
+      // Strip the "ChatGPT"/"GPT" prefix, replace spaces and periods with
+      // hyphens, then add the "gpt-" prefix when the name starts with a number
+      // so "ChatGPT 4.5" becomes "gpt-4-5" and "ChatGPT o4-mini" stays
+      // "o4-mini".
+      m = m.toLowerCase().replace(/^chatgpt\s*/i, '').replace(/^gpt[\s-]*/i, '');
+      m = m.replace(/\s+/g, '-').replace(/\./g, '-');
+      if (/^[0-9]/.test(m)) m = 'gpt-' + m;
+      return m;
     }
 
     /* -------------- status UI -------------- */
