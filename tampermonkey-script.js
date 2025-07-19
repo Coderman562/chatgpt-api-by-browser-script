@@ -156,11 +156,8 @@
       /* ------------- prompt handling ------------- */
       async _sendPrompt(text, newChat) {
           if (newChat) {
-              const btn = document.querySelector('[data-testid="new-conversation-button"]');
-              if (btn) {
-                  btn.click();
-                  await sleep(300);
-              }
+              this._newChat();
+              return;
           }
 
           const editor = document.querySelector('div.ProseMirror[contenteditable="true"]');
@@ -230,12 +227,20 @@
       }
 
       _ensureModel(model) {
-          const url = new URL(location.href);
-          if (url.searchParams.get('model') !== model) {
+          const current = new URL(location.href);
+          if (current.searchParams.get('model') !== model) {
               sessionStorage.setItem(SWITCH_KEY, model);
+              const url = new URL('/', location.origin);
               url.searchParams.set('model', model);
               location.href = url.toString();
           }
+      }
+
+      _newChat() {
+          const model = this._getCurrentModel();
+          const url = new URL('/', location.origin);
+          url.searchParams.set('model', model);
+          location.href = url.toString();
       }
 
       _switchModel() {
