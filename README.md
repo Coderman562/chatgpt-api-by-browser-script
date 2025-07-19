@@ -43,49 +43,13 @@ If you see this in the upper right corner of the webpage, you have succeeded !
 
 ![Success Image](./success.png)
 
-### Step 5 Use API
 
-You now have an API address: http://localhost:8766/v1/chat/completions
+### Step 5 Run the script
 
+Execute the Node.js program to process all prompts:
 
-#### API Params
-| Parameter   | Description                                      | Default | Required |
-|-------------|--------------------------------------------------|---------|----------|
-| messages    | Refer to OpenAI API documentation                |      | Yes      |
-| model       | No longer supported, please select model on the webpage.               |      |        |
-| stream      | Refer to OpenAI API documentation                | false   | No       |
-
-#### Example of Request Parameters
-```json
-{
-  "messages": [
-    {
-      "role": "system",
-      "content": "You are a helpful assistant."
-    },
-    {
-      "role": "user",
-      "content": "Who are you?"
-    }
-  ],
-  "model": "gpt-4"
-}
-
+```bash
+npm start
 ```
-## Play with Auto-GPT
 
-Modify the llm_utils.py file in Auto-GPT.
-```python
-import requests
-# response = openai.ChatCompletion.create(
-#     model=model,
-#     messages=messages,
-#     temperature=temperature,
-#     max_tokens=max_tokens,
-# )
-response = requests.post("http://localhost:8766/v1/chat/completions", json={"messages": messages, "model": model, "newChat": False, "temperature": temperature, "max_tokens": max_tokens}).json()
-
-
-# return response.choices[0].message["content"]
-return response["choices"][0]["message"]["content"]
-```
+The answers will be saved to `answers.txt` and a chart of response times will be written to `response-times.png`.
