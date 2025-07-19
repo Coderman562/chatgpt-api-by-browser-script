@@ -72,7 +72,23 @@
 
     /* -------- model management -------- */
     _initConversation() {
+      const pending = sessionStorage.getItem('pendingModel');
       const current = this._getCurrentModel();
+
+      // When a model hits its daily cap ChatGPT removes the ?model
+      // parameter and refreshes the page. At that point all our state is lost
+      // so we record the last attempted model in sessionStorage before
+      // navigating. If we start up again without the query parameter and the
+      // current model differs from the one we tried, we know the request was
+      // rejected due to limits.
+      if (pending && (!location.search.includes('model=') || pending !== current)) {
+        this._markUnavailable(pending);
+        sessionStorage.removeItem('pendingModel');
+        this._switchModel();
+        return;
+      }
+      sessionStorage.removeItem('pendingModel');
+
       if (current) {
         const idx = MODELS.indexOf(current);
         if (idx !== -1) this.modelIndex = idx;
@@ -80,28 +96,16 @@
 
       if (this._getCurrentModel() !== MODELS[this.modelIndex]) {
         this._startChat(MODELS[this.modelIndex]);
-        setTimeout(() => {
-          if (this._getCurrentModel() !== MODELS[this.modelIndex]) {
-            this._markUnavailable(MODELS[this.modelIndex]);
-            this._switchModel();
-          }
-        }, 1000);
       }
     }
 
     _startChat(model) {
       const url = new URL('/', location.origin);
       url.searchParams.set('model', model);
+      // Remember which model we attempted so _initConversation can detect if
+      // ChatGPT silently dropped us back to another model after the redirect.
+      sessionStorage.setItem('pendingModel', model);
       location.href = url.toString();
-      // After navigation ChatGPT may drop the ?model parameter if the model
-      // has already hit its usage limit. Checking for that redirect lets us
-      // know the model is unavailable.
-      setTimeout(() => {
-        if (!location.search.includes('model=')) {
-          this._markUnavailable(model);
-          this._switchModel();
-        }
-      }, 1000);
     }
 
     _newChat() {
