@@ -126,6 +126,10 @@
     }
 
     _checkModelAfterAnswer() {
+      // After an answer is finished, ChatGPT may silently switch to a different
+      // model if the current one has hit its usage limit. Comparing the model
+      // now lets us detect that automatic change and pick the next available
+      // model from our list.
       if (this._getCurrentModel() !== MODELS[this.modelIndex]) {
         this._markUnavailable(MODELS[this.modelIndex]);
         this._switchModel();
@@ -182,16 +186,34 @@
 
     // Determine which model is currently selected
     _getCurrentModel() {
-      const urlModel = new URLSearchParams(location.search).get('model');
-      if (urlModel) return this._norm(urlModel);
-      const btn = document.querySelector('[data-testid="model-picker"] span') ||
-                  document.querySelector('[data-testid="model-switcher"] span');
-      return btn ? this._norm(btn.textContent.trim()) : '';
+      // The active model is displayed inside the selector button, e.g.:
+      //   <button data-testid="model-switcher-dropdown-button" aria-label="Model selector, current model is 4o">ChatGPT <span>4o</span></button>
+      // when the dropdown shows "ChatGPT o4-mini" or "ChatGPT 4.1". Because the
+      // URL no longer includes the model name, reading this button is the only
+      // reliable way to detect which model is active.
+      // We normalize the label so variants like "ChatGPT 4.5" and "ChatGPT o4-mini-high"
+      // map to the API style names such as "gpt-4-5" or "o4-mini-high".
+      const btn = document.querySelector('button[data-testid="model-switcher-dropdown-button"]');
+      if (!btn) return '';
+
+      const label = btn.getAttribute('aria-label') || btn.textContent;
+      if (!label) return '';
+      const match = label.match(/current model is\s*(.+)$/i);
+      const rawModel = match ? match[1] : label;
+      return this._norm(rawModel.trim());
     }
 
     // Normalize a model string to the API's expected format
     _norm(m) {
-      return m.toLowerCase().replace(/\s+/g, '').replace(/\./g, '-');
+      // Button labels look like "ChatGPT o4-mini-high" or "ChatGPT 4.1".
+      // Strip the "ChatGPT"/"GPT" prefix, replace spaces and periods with
+      // hyphens, then add the "gpt-" prefix when the name starts with a number
+      // so "ChatGPT 4.5" becomes "gpt-4-5" and "ChatGPT o4-mini" stays
+      // "o4-mini".
+      m = m.toLowerCase().replace(/^chatgpt\s*/i, '').replace(/^gpt[\s-]*/i, '');
+      m = m.replace(/\s+/g, '-').replace(/\./g, '-');
+      if (/^[0-9]/.test(m)) m = 'gpt-' + m;
+      return m;
     }
 
     /* -------------- status UI -------------- */
