@@ -39,10 +39,12 @@
 
     // Initialize the script once the page loads
     init() {
-      window.addEventListener('load', () => {
+      window.addEventListener('load', async () => {
         this._injectStatus();
+        // Set up the conversation first so the correct model is active before
+        // the websocket starts sending requests.
+        await this._initConversation();
         this._connect();
-        this._initConversation();
         setInterval(() => this._heartbeat(), 30000);
       });
     }
@@ -71,16 +73,20 @@
     }
 
     /* -------- model management -------- */
-    _initConversation() {
+    async _initConversation() {
+      // The model selector button may not immediately reflect the selected
+      // model after navigation. Waiting a moment avoids a race where we read
+      // the previous model and think the switch failed.
+      await sleep(1000);
+
       const pending = sessionStorage.getItem('pendingModel');
       const current = this._getCurrentModel();
 
-      // When a model hits its daily cap ChatGPT removes the ?model
-      // parameter and refreshes the page. At that point all our state is lost
-      // so we record the last attempted model in sessionStorage before
-      // navigating. If we start up again without the query parameter and the
-      // current model differs from the one we tried, we know the request was
-      // rejected due to limits.
+      // When a model hits its daily cap ChatGPT strips the ?model parameter and
+      // refreshes the page. The refresh resets our script, so we persist the
+      // attempted model in sessionStorage. On startup we compare that stored
+      // value with the page's current model: if the parameter vanished or the
+      // models differ, the switch was rejected due to limits.
       if (pending && (!location.search.includes('model=') || pending !== current)) {
         this._markUnavailable(pending);
         sessionStorage.removeItem('pendingModel');
@@ -102,8 +108,9 @@
     _startChat(model) {
       const url = new URL('/', location.origin);
       url.searchParams.set('model', model);
-      // Remember which model we attempted so _initConversation can detect if
-      // ChatGPT silently dropped us back to another model after the redirect.
+      // Persist the requested model so that if ChatGPT reloads the page without
+      // it (which happens when the model is at capacity) _initConversation can
+      // detect the failure on the next startup.
       sessionStorage.setItem('pendingModel', model);
       location.href = url.toString();
     }
