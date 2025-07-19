@@ -96,13 +96,12 @@
       // After navigation ChatGPT may drop the ?model parameter if the model
       // has already hit its usage limit. Checking for that redirect lets us
       // know the model is unavailable.
-      // Pseudocode:
-      // setTimeout(() => {
-      //   if (!location.search.includes('model=')) {
-      //     this._markUnavailable(model);
-      //     this._switchModel();
-      //   }
-      // }, 1000);
+      setTimeout(() => {
+        if (!location.search.includes('model=')) {
+          this._markUnavailable(model);
+          this._switchModel();
+        }
+      }, 1000);
     }
 
     _newChat() {
