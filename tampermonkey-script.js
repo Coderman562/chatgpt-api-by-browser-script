@@ -227,9 +227,10 @@
       }
 
       _ensureModel(model) {
-          const url = new URL(location.href);
-          if (url.searchParams.get('model') !== model) {
+          const current = new URL(location.href);
+          if (current.searchParams.get('model') !== model) {
               sessionStorage.setItem(SWITCH_KEY, model);
+              const url = new URL('/', location.origin);
               url.searchParams.set('model', model);
               location.href = url.toString();
           }
