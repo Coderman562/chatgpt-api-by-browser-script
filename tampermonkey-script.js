@@ -71,7 +71,12 @@
     }
 
     /* -------- model management -------- */
-    _initConversation() {
+    async _initConversation() {
+      // The model selector button may not immediately reflect the selected
+      // model after navigation. Waiting a moment avoids a race where we read
+      // the previous model and think the switch failed.
+      await sleep(1000);
+
       const pending = sessionStorage.getItem('pendingModel');
       const current = this._getCurrentModel();
 
