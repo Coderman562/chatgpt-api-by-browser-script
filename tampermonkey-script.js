@@ -125,15 +125,8 @@
       this.unavailable.add(model);
     }
 
-    _modelLimitReached() {
-      // TODO: implement detection logic
-      // Check if the page redirected from /?model=XYZ to /
-      // or if ChatGPT changed the model parameter automatically.
-      return false;
-    }
-
     _checkModelAfterAnswer() {
-      if (this._modelLimitReached() || this._getCurrentModel() !== MODELS[this.modelIndex]) {
+      if (this._getCurrentModel() !== MODELS[this.modelIndex]) {
         this._markUnavailable(MODELS[this.modelIndex]);
         this._switchModel();
       }
