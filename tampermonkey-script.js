@@ -126,6 +126,10 @@
     }
 
     _checkModelAfterAnswer() {
+      // After an answer is finished, ChatGPT may silently switch to a different
+      // model if the current one has hit its usage limit. Comparing the model
+      // now lets us detect that automatic change and pick the next available
+      // model from our list.
       if (this._getCurrentModel() !== MODELS[this.modelIndex]) {
         this._markUnavailable(MODELS[this.modelIndex]);
         this._switchModel();
@@ -182,10 +186,11 @@
 
     // Determine which model is currently selected
     _getCurrentModel() {
-      // The current model is displayed in a dedicated button element. While the URL
-      // previously exposed the selected model via a `model` query parameter, the UI
-      // now only reflects it through this button.  We read the label from the
-      // button and normalize it so that formats like "GPT 4o" become "gpt-4o".
+      // The active model is shown inside the model selector button, e.g.
+      //   <button data-testid="model-switcher-dropdown-button" aria-label="Model selector, current model is 4o">...
+      // The URL no longer carries the model name, so inspecting this button
+      // is the only reliable way to know which model ChatGPT is using. The
+      // label is normalized so "GPT 4o" becomes "gpt-4o".
       const btn = document.querySelector('button[data-testid="model-switcher-dropdown-button"]');
       if (!btn) return '';
 
