@@ -2,11 +2,11 @@ import { askChatGPT, type ChatGPTResponse } from './chatGPTclient';
 import { webSocketServer } from '../server/webSocketServer';
 import { sleep } from '../utils/sleep';
 
-export async function askWithReconnect(text: string): Promise<ChatGPTResponse> {
+export async function askWithReconnect(text: string, newChat: boolean): Promise<ChatGPTResponse> {
   while (true) {
     try {
       await webSocketServer.waitForConnection();
-      return await askChatGPT(text);
+      return await askChatGPT(text, newChat);
     } catch (err: any) {
       if (err.message === 'disconnected' || err.message === 'not connected') {
         console.log('Lost connection, waiting to reconnect...');
