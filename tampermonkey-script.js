@@ -142,7 +142,7 @@
           this.socket.onmessage = e => {
               try {
                   const req = JSON.parse(e.data);
-                  if (req?.text) this._sendPrompt(req.text);
+                  if (req?.text) this._sendPrompt(req.text, !!req.newChat);
               } catch (err) { log('parse error', err); }
           };
       }
@@ -154,7 +154,15 @@
       }
 
       /* ------------- prompt handling ------------- */
-      async _sendPrompt(text) {
+      async _sendPrompt(text, newChat) {
+          if (newChat) {
+              const btn = document.querySelector('[data-testid="new-conversation-button"]');
+              if (btn) {
+                  btn.click();
+                  await sleep(300);
+              }
+          }
+
           const editor = document.querySelector('div.ProseMirror[contenteditable="true"]');
           if (!editor) { log('editor not found'); return; }
 

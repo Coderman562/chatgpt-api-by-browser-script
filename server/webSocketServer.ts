@@ -3,7 +3,7 @@ import WebSocket, { WebSocketServer as WsServer } from 'ws';
 
 export interface RequestPayload {
   text: string;
-  model: string;
+  model?: string;
   newChat: boolean;
 }
 

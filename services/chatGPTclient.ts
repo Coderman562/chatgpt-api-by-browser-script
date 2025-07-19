@@ -5,11 +5,11 @@ export interface ChatGPTResponse {
   the_model: string;
 }
 
-export const askChatGPT = (text: string): Promise<ChatGPTResponse> =>
+export const askChatGPT = (text: string, newChat: boolean): Promise<ChatGPTResponse> =>
   new Promise((resolve, reject) => {
-    const payload: RequestPayload = { text, model: 'gpt-4o', newChat: true };
+    const payload: RequestPayload = { text, newChat };
 
-    let theModel = 'gpt-4o';
+    let theModel = '';
     webSocketServer.sendRequest(
       payload,
       (type: ResponseType, chunk: string, model?: string) => {
