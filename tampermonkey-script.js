@@ -26,6 +26,15 @@
     'gpt-4-5'
   ];
 
+  // How long each model remains unavailable after hitting its quota
+  const MODEL_LIMITS = {
+    'gpt-4o':       3 * 60 * 60 * 1000, // 3 hours
+    'gpt-4-1':      3 * 60 * 60 * 1000, // 3 hours
+    'o4-mini':      24 * 60 * 60 * 1000, // 1 day
+    'o4-mini-high': 24 * 60 * 60 * 1000, // 1 day
+    'gpt-4-5':      7 * 24 * 60 * 60 * 1000 // 7 days
+  };
+
   const log = (...a) => {
     const stamp = new Date().toISOString();
     console.log('chatgpt-api', stamp, ...a);
@@ -37,13 +46,15 @@
     observer = null;
     statusNode = null;
     modelIndex = 0;
-    unavailable = new Set();
+    // Map of unavailable models to the timestamp when they were blocked
+    unavailable = new Map();
     pendingNewChat = false;
 
     // Initialize the script once the page loads
     init() {
       window.addEventListener('load', async () => {
         this._injectStatus();
+        this._loadUnavailable();
         // Set up the conversation first so the correct model is active before
         // the websocket starts sending requests.
         await this._initConversation();
@@ -81,6 +92,36 @@
         log('sending heartbeat');
         this.socket.send(JSON.stringify({ type: 'heartbeat' }));
       }
+    }
+
+    // Load unavailable models from localStorage and drop any that have expired
+    _loadUnavailable() {
+      try {
+        const data = JSON.parse(localStorage.getItem('unavailableModels') || '[]');
+        this.unavailable = new Map(data);
+      } catch (err) { log('failed to load unavailable', err); }
+      this._purgeUnavailable();
+    }
+
+    // Persist the unavailable map to localStorage
+    _saveUnavailable() {
+      try {
+        localStorage.setItem('unavailableModels', JSON.stringify(Array.from(this.unavailable.entries())));
+      } catch (err) { log('failed to save unavailable', err); }
+    }
+
+    // Remove models whose cooldown has expired
+    _purgeUnavailable() {
+      const now = Date.now();
+      let changed = false;
+      for (const [model, ts] of this.unavailable.entries()) {
+        const limit = MODEL_LIMITS[model];
+        if (limit && now - ts > limit) {
+          this.unavailable.delete(model);
+          changed = true;
+        }
+      }
+      if (changed) this._saveUnavailable();
     }
 
     /* -------- model management -------- */
@@ -141,6 +182,7 @@
 
     _switchModel() {
       log('attempting model switch');
+      this._purgeUnavailable();
       for (let i = 1; i <= MODELS.length; i++) {
         const idx = (this.modelIndex + i) % MODELS.length;
         const candidate = MODELS[idx];
@@ -156,7 +198,8 @@
 
     _markUnavailable(model) {
       log('marking unavailable', model);
-      this.unavailable.add(model);
+      this.unavailable.set(model, Date.now());
+      this._saveUnavailable();
     }
 
     /**
