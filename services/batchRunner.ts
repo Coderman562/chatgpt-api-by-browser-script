@@ -17,10 +17,13 @@ export async function runBatch(questions: string[]): Promise<void> {
     count += 1;
     console.log(`\n[${count}/${questions.length}]`);
 
-    const newChat = count % 50 === 1;
+    // start a new chat every 50 questions, but skip the very first
+    // question; sending the first prompt with newChat=true would reload
+    // the page before any text is submitted, causing an infinite loop
+    const newChat = count > 1 && count % 50 === 1;
     const start = Date.now();
     const resp: ChatGPTResponse = await askWithReconnect(q, newChat);
-    const elapsed = Date.now() - start;
+    const elapsed = (Date.now() - start) / 1000; // seconds
     durations.push(elapsed);
     await writeChart(durations);
     const raw = resp.text;
@@ -28,8 +31,8 @@ export async function runBatch(questions: string[]): Promise<void> {
     const extracted = match ? match[0] : raw.trim();
     const oneLine = extracted.replace(/\s*\n+\s*/g, ' ').trim();
 
-    console.log('  ↳', oneLine, `(model: ${resp.the_model}, ${elapsed} ms)`);
-    fs.appendFileSync('answers.txt', oneLine + `\t${resp.the_model}\n`);
+    console.log('  ↳', oneLine, `(model: ${resp.the_model}, ${elapsed.toFixed(2)} s)`);
+    fs.appendFileSync('answers.txt', oneLine + '\n');
 
     if (count < questions.length) {
       const delay = 8_000 + Math.random() * 7_000;
