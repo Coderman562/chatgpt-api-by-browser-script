@@ -47,14 +47,14 @@
     statusNode = null;
     modelIndex = 0;
     // Map of unavailable models to the timestamp when they were blocked
-    unavailable = new Map();
+    unavailableModels = new Map();
     pendingNewChat = false;
 
     // Initialize the script once the page loads
     init() {
       window.addEventListener('load', async () => {
         this._injectStatus();
-        this._loadUnavailable();
+        this._loadUnavailableModels();
         // Set up the conversation first so the correct model is active before
         // the websocket starts sending requests.
         await this._initConversation();
@@ -95,33 +95,33 @@
     }
 
     // Load unavailable models from localStorage and drop any that have expired
-    _loadUnavailable() {
+    _loadUnavailableModels() {
       try {
         const data = JSON.parse(localStorage.getItem('unavailableModels') || '[]');
-        this.unavailable = new Map(data);
+        this.unavailableModels = new Map(data);
       } catch (err) { log('failed to load unavailable', err); }
-      this._purgeUnavailable();
+      this._purgeUnavailableModels();
     }
 
     // Persist the unavailable map to localStorage
-    _saveUnavailable() {
+    _saveUnavailableModels() {
       try {
-        localStorage.setItem('unavailableModels', JSON.stringify(Array.from(this.unavailable.entries())));
+        localStorage.setItem('unavailableModels', JSON.stringify(Array.from(this.unavailableModels.entries())));
       } catch (err) { log('failed to save unavailable', err); }
     }
 
     // Remove models whose cooldown has expired
-    _purgeUnavailable() {
+    _purgeUnavailableModels() {
       const now = Date.now();
       let changed = false;
-      for (const [model, ts] of this.unavailable.entries()) {
+      for (const [model, ts] of this.unavailableModels.entries()) {
         const limit = MODEL_LIMITS[model];
         if (limit && now - ts > limit) {
-          this.unavailable.delete(model);
+          this.unavailableModels.delete(model);
           changed = true;
         }
       }
-      if (changed) this._saveUnavailable();
+      if (changed) this._saveUnavailableModels();
     }
 
     /* -------- model management -------- */
@@ -182,11 +182,11 @@
 
     _switchModel() {
       log('attempting model switch');
-      this._purgeUnavailable();
+      this._purgeUnavailableModels();
       for (let i = 1; i <= MODELS.length; i++) {
         const idx = (this.modelIndex + i) % MODELS.length;
         const candidate = MODELS[idx];
-        if (!this.unavailable.has(candidate)) {
+        if (!this.unavailableModels.has(candidate)) {
           this.modelIndex = idx;
           log('switching to model', candidate);
           this._startChat(candidate);
@@ -198,8 +198,8 @@
 
     _markUnavailable(model) {
       log('marking unavailable', model);
-      this.unavailable.set(model, Date.now());
-      this._saveUnavailable();
+      this.unavailableModels.set(model, Date.now());
+      this._saveUnavailableModels();
     }
 
     /**
