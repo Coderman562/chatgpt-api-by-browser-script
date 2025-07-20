@@ -46,6 +46,8 @@
     pendingNewChat = false;
     // Timer id for the next model availability check
     waitTimer = null;
+    // Promise that resolves when waiting for the next model ends
+    waitPromise = null;
 
     // Initialize the script once the page loads
     init() {
@@ -212,10 +214,12 @@
       }
 
       log('waiting', delay, 'ms for next model');
-      this.waitTimer = setTimeout(() => {
+      this.waitPromise = sleep(delay).then(() => {
         this.waitTimer = null;
+        this.waitPromise = null;
         this._switchModel();
-      }, delay);
+      });
+      this.waitTimer = true;
     }
 
     _markUnavailable(model) {
@@ -348,7 +352,7 @@
     }
 
     // Read the completed answer from the page and send it over the socket
-    _sendFinalAnswer() {
+    async _sendFinalAnswer() {
       const lastArticle = document.querySelector('article[data-testid^="conversation-turn-"]:last-of-type');
       if (!lastArticle) { log('article not found'); return; }
       const md = lastArticle.querySelector('div[data-message-author-role="assistant"] .markdown');
@@ -356,11 +360,16 @@
       const text = md.innerText.trim();
       const the_model = this._getCurrentModel();
       log('final answer', { length: text.length, the_model });
+      // Check usage limits before replying to the server. If all models are
+      // exhausted _switchModel() will schedule a wait via waitPromise which we
+      // await so the server doesn't immediately send another prompt.
+      this._postAnswerChecks(lastArticle);
+      if (this.waitPromise) {
+        log('delaying response until next model is available');
+        await this.waitPromise;
+      }
       this.socket.send(JSON.stringify({ type: 'answer', text, the_model }));
       this.socket.send(JSON.stringify({ type: 'stop' }));
-      // After each answer run checks to see if the current model has reached
-      // its usage limit, either by an automatic switch or an inline error.
-      this._postAnswerChecks(lastArticle);
       if (this.pendingNewChat) {
         // Reload after sending the answer so the websocket receives it before
         // the page refreshes to start a new thread
