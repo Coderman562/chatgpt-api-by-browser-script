@@ -218,11 +218,15 @@
      */
     _checkLimitMessage(article) {
       const err = article.querySelector('.text-token-text-error');
-      if (err && /hit your limit/i.test(err.textContent || '')) {
-        log('usage limit message detected');
-        this._markUnavailable(MODELS[this.modelIndex]);
-        this._switchModel();
-        return true;
+      const button = article.querySelector('[data-testid="regenerate-thread-error-button"]');
+      if (err) {
+        const txt = err.textContent || '';
+        if (/hit your limit/i.test(txt) || /usage cap/i.test(txt) || /usage limit/i.test(txt) || button) {
+          log('usage limit message detected');
+          this._markUnavailable(MODELS[this.modelIndex]);
+          this._switchModel();
+          return true;
+        }
       }
       return false;
     }
