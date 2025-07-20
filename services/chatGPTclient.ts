@@ -7,7 +7,7 @@ export interface ChatGPTResponse {
 
 export const askChatGPT = (text: string, newChat: boolean): Promise<ChatGPTResponse> =>
   new Promise((resolve, reject) => {
-    const payload: RequestPayload = { text, newChat };
+    const payload: RequestPayload = { text, newChat, webSearch: true };
 
     let theModel = '';
     webSocketServer.sendRequest(
