@@ -61,10 +61,16 @@
       this.socket.onclose   = () => { log('websocket closed'); this._setStatus('API Disconnected', '#ef4444');
                                       setTimeout(() => this._connect(), 2000); };
       this.socket.onerror   = err => { log('websocket error', err); this._setStatus('API Error',        '#ef4444'); };
-      this.socket.onmessage = e => {
+      this.socket.onmessage = async e => {
         try {
           const req = JSON.parse(e.data);
-          if (req?.text) this._sendPrompt(req.text, !!req.newChat);
+          if (req?.text) {
+            // webSearch defaults to true so every prompt will include web search
+            // unless explicitly disabled by sending { webSearch: false }
+            const enableSearch = req.webSearch ?? true;
+            if (enableSearch) await this._ensureWebSearchState();
+            this._sendPrompt(req.text, !!req.newChat);
+          }
         } catch (err) { log('parse error', err); }
       };
     }
@@ -163,6 +169,38 @@
         this._markUnavailable(MODELS[this.modelIndex]);
         this._switchModel();
       }
+    }
+
+    // Check if the "Search" pill is present in the composer toolbar. The
+    // pill only appears when the web search feature is active for the current
+    // prompt.
+    _isWebSearchOn() {
+      const pills = document.querySelectorAll('button[data-pill][data-is-selected="true"]');
+      return Array.from(pills).some(btn => /search/i.test(btn.textContent || ''));
+    }
+
+    // Ensure the web search tool is enabled. The menu DOM can change, so
+    // elements are located by text rather than stable selectors.
+    async _ensureWebSearchState() {
+      if (this._isWebSearchOn()) return;
+
+      const toolsBtn = document.getElementById('system-hint-button');
+      if (!toolsBtn) { log('tools button not found'); return; }
+      toolsBtn.click(); // open the Tools dropdown
+
+      // Wait briefly for the menu to render
+      await sleep(100);
+
+      // Locate the "Web search" menu item in the dropdown by text since there
+      // is no stable identifier for it.
+      const items = document.querySelectorAll('div[role="menuitemradio"]');
+      const searchItem = Array.from(items).find(el => /web search/i.test(el.textContent || ''));
+      if (!searchItem) { log('web search menu item not found'); return; }
+
+      searchItem.click(); // toggle the setting
+
+      // Give the UI time to update and close
+      await sleep(100);
     }
 
     /* ------------ sending prompt ------------ */

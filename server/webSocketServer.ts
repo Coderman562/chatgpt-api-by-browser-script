@@ -5,6 +5,7 @@ export interface RequestPayload {
   text: string;
   model?: string;
   newChat: boolean;
+  webSearch?: boolean;
 }
 
 export type ResponseType = 'stop' | 'answer' | 'error';
