@@ -27,7 +27,10 @@
     'gpt-4-5'
   ];
 
-  const log   = (...a) => console.log('chatgpt-api', ...a);
+  const log = (...a) => {
+    const stamp = new Date().toISOString();
+    console.log('chatgpt-api', stamp, ...a);
+  };
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   class App {
@@ -52,11 +55,12 @@
     /* -------- websocket handling -------- */
     // Establish a websocket connection to the local API server
     _connect() {
+      log('opening websocket', WS_URL);
       this.socket = new WebSocket(WS_URL);
-      this.socket.onopen    = () => this._setStatus('API Connected',    '#16a34a');
-      this.socket.onclose   = () => { this._setStatus('API Disconnected', '#ef4444');
+      this.socket.onopen    = () => { log('websocket open'); this._setStatus('API Connected',    '#16a34a'); };
+      this.socket.onclose   = () => { log('websocket closed'); this._setStatus('API Disconnected', '#ef4444');
                                       setTimeout(() => this._connect(), 2000); };
-      this.socket.onerror   = () => this._setStatus('API Error',        '#ef4444');
+      this.socket.onerror   = err => { log('websocket error', err); this._setStatus('API Error',        '#ef4444'); };
       this.socket.onmessage = e => {
         try {
           const req = JSON.parse(e.data);
@@ -68,6 +72,7 @@
     // Periodically send keep-alive messages
     _heartbeat() {
       if (this.socket?.readyState === WebSocket.OPEN) {
+        log('sending heartbeat');
         this.socket.send(JSON.stringify({ type: 'heartbeat' }));
       }
     }
@@ -82,12 +87,15 @@
       const pending = sessionStorage.getItem('pendingModel');
       const current = this._getCurrentModel();
 
+      log('init conversation', { pending, current });
+
       // When a model hits its daily cap ChatGPT strips the ?model parameter and
       // refreshes the page. The refresh resets our script, so we persist the
       // attempted model in sessionStorage. On startup we compare that stored
       // value with the page's current model: if the parameter vanished or the
       // models differ, the switch was rejected due to limits.
       if (pending && (!location.search.includes('model=') || pending !== current)) {
+        log('model usage cap hit', pending);
         this._markUnavailable(pending);
         sessionStorage.removeItem('pendingModel');
         this._switchModel();
@@ -97,15 +105,20 @@
 
       if (current) {
         const idx = MODELS.indexOf(current);
-        if (idx !== -1) this.modelIndex = idx;
+        if (idx !== -1) {
+          this.modelIndex = idx;
+          log('current model index set', idx);
+        }
       }
 
       if (this._getCurrentModel() !== MODELS[this.modelIndex]) {
+        log('switching page model to', MODELS[this.modelIndex]);
         this._startChat(MODELS[this.modelIndex]);
       }
     }
 
     _startChat(model) {
+      log('starting chat with', model);
       const url = new URL('/', location.origin);
       url.searchParams.set('model', model);
       // Persist the requested model so that if ChatGPT reloads the page without
@@ -116,15 +129,18 @@
     }
 
     _newChat() {
+      log('starting new chat thread');
       this._startChat(MODELS[this.modelIndex]);
     }
 
     _switchModel() {
+      log('attempting model switch');
       for (let i = 1; i <= MODELS.length; i++) {
         const idx = (this.modelIndex + i) % MODELS.length;
         const candidate = MODELS[idx];
         if (!this.unavailable.has(candidate)) {
           this.modelIndex = idx;
+          log('switching to model', candidate);
           this._startChat(candidate);
           return;
         }
@@ -133,6 +149,7 @@
     }
 
     _markUnavailable(model) {
+      log('marking unavailable', model);
       this.unavailable.add(model);
     }
 
@@ -142,6 +159,7 @@
       // now lets us detect that automatic change and pick the next available
       // model from our list.
       if (this._getCurrentModel() !== MODELS[this.modelIndex]) {
+        log('model changed after answer');
         this._markUnavailable(MODELS[this.modelIndex]);
         this._switchModel();
       }
@@ -150,6 +168,7 @@
     /* ------------ sending prompt ------------ */
     // Insert text into the editor and submit it. If newChat is true, start a fresh thread
     async _sendPrompt(text, newChat) {
+      log('send prompt', { newChat, length: text.length });
       if (newChat) { this._newChat(); return; }
 
       const editor = document.querySelector('div.ProseMirror[contenteditable="true"]');
@@ -169,6 +188,7 @@
     // Watch DOM mutations to know when ChatGPT has finished responding
     _watchForAnswer() {
       let started = false;
+      log('watching for answer');
       this.observer?.disconnect();
       this.observer = new MutationObserver(() => {
         const stopBtn = document.querySelector(STOP_BTN_SEL);
@@ -189,6 +209,7 @@
       if (!md) { log('markdown not found'); return; }
       const text = md.innerText.trim();
       const the_model = this._getCurrentModel();
+      log('final answer', { length: text.length, the_model });
       this.socket.send(JSON.stringify({ type: 'answer', text, the_model }));
       this.socket.send(JSON.stringify({ type: 'stop' }));
       this._checkModelAfterAnswer();
@@ -211,7 +232,9 @@
       if (!label) return '';
       const match = label.match(/current model is\s*(.+)$/i);
       const rawModel = match ? match[1] : label;
-      return this._norm(rawModel.trim());
+      const model = this._norm(rawModel.trim());
+      log('current model detected', model);
+      return model;
     }
 
     // Normalize a model string to the API's expected format
@@ -234,6 +257,7 @@
         style: 'position:fixed;top:10px;right:10px;z-index:9999;font-weight:600'
       });
       document.body.appendChild(this.statusNode);
+      log('status indicator injected');
     }
 
     // Update text and color of the status indicator
@@ -241,6 +265,7 @@
       if (!this.statusNode) return;
       this.statusNode.textContent = text;
       this.statusNode.style.color = color;
+      log('status', text);
     }
   }
 
