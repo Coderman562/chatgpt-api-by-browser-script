@@ -150,8 +150,10 @@
       for (const [model, ts] of this.unavailableModels.entries()) {
         const limit = MODEL_LIMITS[model];
         const expire = ts + (limit || 0);
-        log('  checking', model, 'expires', new Date(expire).toISOString());
-        if (limit && now - ts > limit) {
+        const remainingMs = expire - now;
+        const minutesLeft = Math.max(0, Math.ceil(remainingMs / 60000));
+        log('  checking', model, 'cooldown left', minutesLeft, 'minute(s)');
+        if (limit && remainingMs <= 0) {
           log('  model', model, 'cooldown expired');
           this.unavailableModels.delete(model);
           changed = true;
