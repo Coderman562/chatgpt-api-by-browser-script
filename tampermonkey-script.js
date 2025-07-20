@@ -159,16 +159,43 @@
       this.unavailable.add(model);
     }
 
+    /**
+     * After an answer completes ChatGPT might silently switch models when the
+     * current one hits its quota. By comparing the displayed model with the one
+     * we believe is active we can detect that automatic change and move on to
+     * the next available model in our rotation.
+     */
     _checkModelAfterAnswer() {
-      // After an answer is finished, ChatGPT may silently switch to a different
-      // model if the current one has hit its usage limit. Comparing the model
-      // now lets us detect that automatic change and pick the next available
-      // model from our list.
       if (this._getCurrentModel() !== MODELS[this.modelIndex]) {
         log('model changed after answer');
         this._markUnavailable(MODELS[this.modelIndex]);
         this._switchModel();
       }
+    }
+
+    /**
+     * Some quota errors are shown inline without changing models. When the UI
+     * includes a "You've hit your limit" message we treat it the same as a
+     * silent model swap and rotate to the next model.
+     */
+    _checkLimitMessage(article) {
+      const err = article.querySelector('.text-token-text-error');
+      if (err && /hit your limit/i.test(err.textContent || '')) {
+        log('usage limit message detected');
+        this._markUnavailable(MODELS[this.modelIndex]);
+        this._switchModel();
+        return true;
+      }
+      return false;
+    }
+
+    /**
+     * Consolidated post-answer checks for any indications that the chosen model
+     * has reached its usage limit.
+     */
+    _postAnswerChecks(article) {
+      this._checkModelAfterAnswer();
+      this._checkLimitMessage(article);
     }
 
     // Check if the "Search" pill is present in the composer toolbar. The
@@ -251,7 +278,9 @@
       log('final answer', { length: text.length, the_model });
       this.socket.send(JSON.stringify({ type: 'answer', text, the_model }));
       this.socket.send(JSON.stringify({ type: 'stop' }));
-      this._checkModelAfterAnswer();
+      // After each answer run checks to see if the current model has reached
+      // its usage limit, either by an automatic switch or an inline error.
+      this._postAnswerChecks(lastArticle);
       if (this.pendingNewChat) {
         // Reload after sending the answer so the websocket receives it before
         // the page refreshes to start a new thread
