@@ -11,7 +11,7 @@ export async function writeChart(durations: number[], file = 'response-times.png
       labels: durations.map((_, i) => i + 1),
       datasets: [
         {
-          label: 'Time (ms)',
+          label: 'Time (s)',
           data: durations,
           borderColor: 'blue',
           fill: false
@@ -21,7 +21,7 @@ export async function writeChart(durations: number[], file = 'response-times.png
     options: {
       scales: {
         x: { title: { display: true, text: 'request' } },
-        y: { title: { display: true, text: 'ms' } }
+        y: { title: { display: true, text: 's' } }
       }
     }
   };

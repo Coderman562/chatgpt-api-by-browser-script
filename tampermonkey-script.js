@@ -12,7 +12,6 @@
   'use strict';
 
   const WS_URL         = 'ws://localhost:8765';
-  const FINAL_DELAY_MS = 3000;
   const STOP_BTN_SEL   = [
     'button[data-testid="stop-button"]',
     'button[aria-label="Stop streaming"]',
@@ -39,6 +38,7 @@
     statusNode = null;
     modelIndex = 0;
     unavailable = new Set();
+    pendingNewChat = false;
 
     // Initialize the script once the page loads
     init() {
@@ -166,10 +166,11 @@
     }
 
     /* ------------ sending prompt ------------ */
-    // Insert text into the editor and submit it. If newChat is true, start a fresh thread
+    // Insert text into the editor and submit it. When newChat is true we queue
+    // a fresh thread to start after the answer has been sent back to the server
     async _sendPrompt(text, newChat) {
       log('send prompt', { newChat, length: text.length });
-      if (newChat) { this._newChat(); return; }
+      if (newChat) this.pendingNewChat = true;
 
       const editor = document.querySelector('div.ProseMirror[contenteditable="true"]');
       if (!editor) { log('editor not found'); return; }
@@ -195,7 +196,7 @@
         if (stopBtn) started = true;
         if (started && !stopBtn) {
           this.observer.disconnect();
-          setTimeout(() => this._sendFinalAnswer(), FINAL_DELAY_MS);
+          setTimeout(() => this._sendFinalAnswer(), 500);
         }
       });
       this.observer.observe(document.body, { childList: true, subtree: true });
@@ -213,6 +214,12 @@
       this.socket.send(JSON.stringify({ type: 'answer', text, the_model }));
       this.socket.send(JSON.stringify({ type: 'stop' }));
       this._checkModelAfterAnswer();
+      if (this.pendingNewChat) {
+        // Reload after sending the answer so the websocket receives it before
+        // the page refreshes to start a new thread
+        this.pendingNewChat = false;
+        this._newChat();
+      }
     }
 
 
