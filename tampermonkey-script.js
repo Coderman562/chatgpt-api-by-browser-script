@@ -12,11 +12,6 @@
   'use strict';
 
   const WS_URL         = 'ws://localhost:8765';
-  const STOP_BTN_SEL   = [
-    'button[data-testid="stop-button"]',
-    'button[aria-label="Stop streaming"]',
-    'button[aria-label="Stop generating"]'
-  ].join(',');
 
   const MODELS = [
     'gpt-4o',
@@ -302,6 +297,11 @@
     /* ----------- answer collection ---------- */
     // Watch DOM mutations to know when ChatGPT has finished responding
     _watchForAnswer() {
+      const STOP_BTN_SEL = [
+        'button[data-testid="stop-button"]',
+        'button[aria-label="Stop streaming"]',
+        'button[aria-label="Stop generating"]'
+      ].join(',');
       let started = false;
       log('watching for answer');
       this.observer?.disconnect();
