@@ -213,7 +213,13 @@
 
       const toolsBtn = document.getElementById('system-hint-button');
       if (!toolsBtn) { log('tools button not found'); return; }
-      toolsBtn.click(); // open the Tools dropdown
+
+      // Radix UI listens for pointer events to open the dropdown, so
+      // programmatically dispatch them before the click.
+      ['pointerdown', 'pointerup'].forEach(type =>
+        toolsBtn.dispatchEvent(new PointerEvent(type, { bubbles: true }))
+      );
+      toolsBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
       // Wait briefly for the menu to render
       await sleep(100);
@@ -224,7 +230,7 @@
       const searchItem = Array.from(items).find(el => /web search/i.test(el.textContent || ''));
       if (!searchItem) { log('web search menu item not found'); return; }
 
-      searchItem.click(); // toggle the setting
+      searchItem.click();
 
       // Give the UI time to update and close
       await sleep(100);
