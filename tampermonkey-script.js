@@ -139,13 +139,20 @@
       } catch (err) { log('failed to save unavailable', err); }
     }
 
-    // Remove models whose cooldown has expired
+    // Remove models whose cooldown has expired.  All timestamps are stored in
+    // UTC using Date.now() so that time zone changes won't affect expiration
+    // checks.  Each time this runs we log the reevaluation so usage patterns
+    // can be audited.
     _purgeUnavailableModels() {
       const now = Date.now();
+      log('re-evaluating model availability', new Date(now).toISOString());
       let changed = false;
       for (const [model, ts] of this.unavailableModels.entries()) {
         const limit = MODEL_LIMITS[model];
+        const expire = ts + (limit || 0);
+        log('  checking', model, 'expires', new Date(expire).toISOString());
         if (limit && now - ts > limit) {
+          log('  model', model, 'cooldown expired');
           this.unavailableModels.delete(model);
           changed = true;
         }
@@ -243,7 +250,7 @@
         if (remaining > 0 && remaining < delay) delay = remaining;
       }
 
-      log('waiting', delay, 'ms for next model');
+      log('waiting', delay, 'ms for next model; next check at', new Date(now + delay).toISOString());
       this.waitPromise = sleep(delay).then(() => {
         this.waitTimer = null;
         this.waitPromise = null;
@@ -253,6 +260,9 @@
     }
 
     _markUnavailable(model) {
+      // Record the UTC timestamp when a model becomes unavailable so that the
+      // cooldown can be calculated reliably even if the browser's timezone
+      // changes between sessions.
       log('marking unavailable', model);
       this.unavailableModels.set(model, Date.now());
       this._saveUnavailableModels();
