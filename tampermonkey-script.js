@@ -243,21 +243,21 @@
     }
 
     /**
-     * Some quota errors are shown inline without changing models. When the UI
-     * includes a "You've hit your limit" message we treat it the same as a
-     * silent model swap and rotate to the next model.
+     * Some quota errors are shown inline without changing models. Usage
+     * notifications do not have a consistent structure, so we scan the entire
+     * article for known phrases such as "hit your limit" or "usage cap". The
+     * presence of the regenerate error button also indicates the message.
+     * When detected we handle it like a silent model swap and rotate to the
+     * next model.
      */
     _checkLimitMessage(article) {
-      const err = article.querySelector('.text-token-text-error');
       const button = article.querySelector('[data-testid="regenerate-thread-error-button"]');
-      if (err) {
-        const txt = err.textContent || '';
-        if (/hit your limit/i.test(txt) || /usage cap/i.test(txt) || /usage limit/i.test(txt) || button) {
-          log('usage limit message detected');
-          this._markUnavailable(MODELS[this.modelIndex]);
-          this._switchModel();
-          return true;
-        }
+      const txt = article.textContent || '';
+      if (/hit your limit/i.test(txt) || /usage cap/i.test(txt) || /usage limit/i.test(txt) || button) {
+        log('usage limit message detected');
+        this._markUnavailable(MODELS[this.modelIndex]);
+        this._switchModel();
+        return true;
       }
       return false;
     }
