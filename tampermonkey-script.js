@@ -8,6 +8,36 @@
 // @license      MIT
 // ==/UserScript==
 
+/*
+  FLOW OVERVIEW
+  -------------
+  This script turns the ChatGPT web UI into a lightweight WebSocket API. A local
+  server connects to the websocket and sends prompts in the following shape:
+
+    { text: "prompt text", newChat?: boolean, webSearch?: boolean }
+
+  When the page loads we restore any models that previously hit usage limits and
+  attempt to start the conversation with the preferred model.  The `MODELS`
+  array controls the order in which models are used.  If a model hits its daily
+  quota we rotate to the next entry in the list and persist the timestamp so it
+  won't be tried again until its cooldown in `MODEL_LIMITS` expires.
+
+  Prompts received over the websocket are inserted into the page.  The script
+  watches DOM changes to know when ChatGPT has finished responding.  Once the
+  answer is complete it's sent back to the websocket client.
+
+  Quota handling occurs in two ways:
+    1. After each response we compare the page's displayed model to the model we
+       believe is active.  If ChatGPT silently switched due to a quota hit we
+       mark the old model unavailable and rotate to the next.
+    2. Error messages such as "You've hit your limit" are detected and treated
+       the same as a quota hit.
+
+  When all models are temporarily exhausted we wait until the soonest cooldown
+  expires before retrying.  A floating status indicator shows connection state
+  and helps diagnose issues.
+*/
+
 (() => {
   'use strict';
 
@@ -56,20 +86,20 @@
         this._loadUnavailableModels();
         // Set up the conversation first so the correct model is active before
         // the websocket starts sending requests.
-        await this._initConversation();
-        this._connect();
+        await this._prepareConversation();
+        this._openWebSocket();
         setInterval(() => this._heartbeat(), 30000);
       });
     }
 
     /* -------- websocket handling -------- */
     // Establish a websocket connection to the local API server
-    _connect() {
+    _openWebSocket() {
       log('opening websocket', WS_URL);
       this.socket = new WebSocket(WS_URL);
       this.socket.onopen    = () => { log('websocket open'); this._setStatus('API Connected',    '#16a34a'); };
       this.socket.onclose   = () => { log('websocket closed'); this._setStatus('API Disconnected', '#ef4444');
-                                      setTimeout(() => this._connect(), 2000); };
+                                      setTimeout(() => this._openWebSocket(), 2000); };
       this.socket.onerror   = err => { log('websocket error', err); this._setStatus('API Error',        '#ef4444'); };
       this.socket.onmessage = async e => {
         try {
@@ -124,7 +154,7 @@
     }
 
     /* -------- model management -------- */
-    async _initConversation() {
+    async _prepareConversation() {
       // The model selector button may not immediately reflect the selected
       // model after navigation. Waiting a moment avoids a race where we read
       // the previous model and think the switch failed.
@@ -159,24 +189,24 @@
 
       if (this._getCurrentModel() !== MODELS[this.modelIndex]) {
         log('switching page model to', MODELS[this.modelIndex]);
-        this._startChat(MODELS[this.modelIndex]);
+        this._navigateToModel(MODELS[this.modelIndex]);
       }
     }
 
-    _startChat(model) {
+    _navigateToModel(model) {
       log('starting chat with', model);
       const url = new URL('/', location.origin);
       url.searchParams.set('model', model);
       // Persist the requested model so that if ChatGPT reloads the page without
-      // it (which happens when the model is at capacity) _initConversation can
+      // it (which happens when the model is at capacity) _prepareConversation can
       // detect the failure on the next startup.
       sessionStorage.setItem('pendingModel', model);
       location.href = url.toString();
     }
 
-    _newChat() {
+    _startNewThread() {
       log('starting new chat thread');
-      this._startChat(MODELS[this.modelIndex]);
+      this._navigateToModel(MODELS[this.modelIndex]);
     }
 
     _switchModel() {
@@ -188,7 +218,7 @@
         if (!this.unavailableModels.has(candidate)) {
           this.modelIndex = idx;
           log('switching to model', candidate);
-          this._startChat(candidate);
+          this._navigateToModel(candidate);
           return;
         }
       }
@@ -323,10 +353,15 @@
       editor.innerHTML = text.replace(/\n/g, '<br>');
       editor.dispatchEvent(new Event('input', { bubbles: true }));
       await sleep(100);
+      this._submitEditor(editor);
+      this._watchForAnswer();
+    }
+
+    // Simulate pressing Enter to submit the current editor contents
+    _submitEditor(editor) {
       ['keydown', 'keyup'].forEach(t =>
         editor.dispatchEvent(new KeyboardEvent(t, { key: 'Enter', code: 'Enter', bubbles: true }))
       );
-      this._watchForAnswer();
     }
 
     /* ----------- answer collection ---------- */
@@ -374,7 +409,7 @@
         // Reload after sending the answer so the websocket receives it before
         // the page refreshes to start a new thread
         this.pendingNewChat = false;
-        this._newChat();
+        this._startNewThread();
       }
     }
 
