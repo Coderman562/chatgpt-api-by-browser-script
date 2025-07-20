@@ -44,6 +44,8 @@
     // Map of unavailable models to the timestamp when they were blocked
     unavailableModels = new Map();
     pendingNewChat = false;
+    // Timer id for the next model availability check
+    waitTimer = null;
 
     // Initialize the script once the page loads
     init() {
@@ -189,6 +191,31 @@
         }
       }
       log('All models exhausted');
+      this._waitForNextModel();
+    }
+
+    /**
+     * When no models are immediately usable, wait for the soonest cooldown to
+     * expire and try again. The timeout is stored so multiple calls don't stack
+     * up when several prompts fail in a row.
+     */
+    _waitForNextModel() {
+      if (this.waitTimer) return;
+
+      let delay = 60 * 1000; // default to 1 minute
+      const now = Date.now();
+      for (const [model, ts] of this.unavailableModels.entries()) {
+        const limit = MODEL_LIMITS[model];
+        if (!limit) continue;
+        const remaining = ts + limit - now;
+        if (remaining > 0 && remaining < delay) delay = remaining;
+      }
+
+      log('waiting', delay, 'ms for next model');
+      this.waitTimer = setTimeout(() => {
+        this.waitTimer = null;
+        this._switchModel();
+      }, delay);
     }
 
     _markUnavailable(model) {
