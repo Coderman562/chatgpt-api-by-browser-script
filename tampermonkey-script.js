@@ -109,6 +109,10 @@
             // unless explicitly disabled by sending { webSearch: false }
             const enableSearch = req.webSearch ?? true;
             if (enableSearch) await this._ensureWebSearchState();
+            if (this.waitPromise) {
+              log('prompt received while waiting for model availability');
+              await this.waitPromise;
+            }
             this._sendPrompt(req.text, !!req.newChat);
           }
         } catch (err) { log('parse error', err); }
