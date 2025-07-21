@@ -294,7 +294,10 @@
      */
     _checkLimitMessage(article) {
       const button = article.querySelector('[data-testid="regenerate-thread-error-button"]');
-      const txt = article.textContent || '';
+      // Using innerText captures only the visible text which is more
+      // reliable for detecting usage limit messages that may include
+      // hidden screen-reader nodes.  Fallback to textContent if needed.
+      const txt = article.innerText || article.textContent || '';
       if (/hit your limit/i.test(txt) || /usage cap/i.test(txt) || /usage limit/i.test(txt) || button) {
         log('usage limit message detected');
         this._markUnavailable(MODELS[this.modelIndex]);
