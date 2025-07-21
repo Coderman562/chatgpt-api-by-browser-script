@@ -13,6 +13,7 @@ This project runs on users' browsers through the Tampermonkey script and convert
 - If you have a chatgpt plus account, you can use gpt-4 api.
 - Having unlimited context.
 - Not easy to be banned and easier to handle errors.
+- Automatically pauses new prompts when all models are unavailable until one becomes usable.
 
 ![ChatGPT API Image](./demo.gif)
 
